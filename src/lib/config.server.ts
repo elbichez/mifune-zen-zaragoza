@@ -1,4 +1,7 @@
 import process from "node:process";
+import { config as loadEnv } from "dotenv";
+
+loadEnv();
 
 export function getServerConfig() {
   return {
