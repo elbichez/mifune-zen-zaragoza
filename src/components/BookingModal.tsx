@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { X, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { createBooking } from "@/lib/api/booking.functions";
 
 interface BookingModalProps {
   open: boolean;
@@ -72,7 +73,8 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
   const [phone, setPhone] = React.useState("");
   const [date, setDate] = React.useState<string>("");
   const [time, setTime] = React.useState("");
-  
+  const [people, setPeople] = React.useState("");
+
   // Estados de control operativo e infraestructura de seguridad
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -93,7 +95,7 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
     }
   }, [open]);
 
-  const handleConfirm = (e: React.FormEvent) => {
+  const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || cooldown) return;
 
@@ -131,21 +133,41 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
       return;
     }
 
+    const peopleNumber = Number(people);
+    if (!peopleNumber || peopleNumber < 1 || peopleNumber > 8) {
+      setError("El número de comensales debe estar entre 1 y 8.");
+      return;
+    }
+
     // Limpieza de estados de error ante validación conforme
     setError("");
     setIsSubmitting(true);
 
-    // Simulación controlada del pipeline de persistencia de reservas
-    setTimeout(() => {
+    try {
+      await createBooking({
+        data: {
+          nombre: cleanName,
+          telefono: cleanPhone,
+          fecha: date,
+          turno: time as "20:30" | "22:30",
+          personas: peopleNumber,
+        },
+      });
+
       setIsSubmitting(false);
       // Reajuste y purga segura de variables sensibles post-transmisión
       setName("");
       setPhone("");
       setDate("");
       setTime("");
+      setPeople("");
       setHoneypot("");
       onOpenChange(false);
-    }, 1200);
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+      setError("No se ha podido completar la reserva. Inténtelo de nuevo.");
+    }
   };
 
   if (!open) return null;
@@ -263,6 +285,24 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
                 <Clock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 pointer-events-none text-muted-foreground/60" />
               </div>
             </div>
+          </div>
+
+          {/* Input: Número de Comensales */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground">
+              Número de Comensales
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={8}
+              value={people}
+              onChange={(e) => setPeople(e.target.value)}
+              required
+              disabled={cooldown || isSubmitting}
+              placeholder="Máximo 8"
+              className="flex h-11 w-full border border-border bg-secondary/20 px-4 text-sm font-light text-foreground placeholder:text-muted-foreground/30 transition-colors focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 disabled:opacity-40"
+            />
           </div>
 
           {/* Alertas de Validación / Cooldown de Seguridad */}
