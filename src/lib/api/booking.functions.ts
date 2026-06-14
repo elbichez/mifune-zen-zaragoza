@@ -7,6 +7,7 @@ export const createBooking = createServerFn({ method: "POST" })
     z.object({
       nombre: z.string().min(1),
       telefono: z.string().min(1),
+      email: z.string().email(),
       fecha: z.string(),
       turno: z.enum(["20:30", "22:30"]),
       personas: z.number().min(1).max(8),
@@ -35,6 +36,9 @@ export const createBooking = createServerFn({ method: "POST" })
           },
           Teléfono: {
             phone_number: data.telefono,
+          },
+          Email: {
+            email: data.email,
           },
           Fecha: {
             date: { start: data.fecha },

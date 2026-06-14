@@ -10,10 +10,12 @@ interface BookingModalProps {
 
 // --- CONSTANTES DE SEGURIDAD ESTRICTA ---
 const MAX_NAME_LENGTH = 50;
+const MAX_NOTES_LENGTH = 300;
 const MAX_ATTEMPTS = 3;
 const COOLDOWN_WINDOW_MS = 60_000; // 60 segundos (1 minuto)
 const RATE_LIMIT_KEY = "mifune_booking_security_token";
 const PHONE_REGEX = /^[+]?[0-9\s]{7,20}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Sanitiza cadenas de texto neutralizando vectores de ataque XSS comunes.
@@ -62,18 +64,20 @@ function recordAttempt(): number[] {
   try {
     window.localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(recent));
   } catch {
-    // Failsafe pasivo si las políticas del navegador restringen el acceso a localStorage
+    // Failsafe pasivo si las politicas del navegador restringen el acceso a localStorage
   }
   return recent;
 }
 
 export function BookingModal({ open, onOpenChange }: BookingModalProps) {
-  // --- DECLARACIÓN UNIFICADA DE ESTADOS ---
+  // --- DECLARACION UNIFICADA DE ESTADOS ---
   const [name, setName] = React.useState("");
   const [phone, setPhone] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [date, setDate] = React.useState<string>("");
   const [time, setTime] = React.useState("");
   const [people, setPeople] = React.useState("");
+  const [notes, setNotes] = React.useState("");
 
   // Estados de control operativo e infraestructura de seguridad
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -81,7 +85,7 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
   const [cooldown, setCooldown] = React.useState(false);
   const [honeypot, setHoneypot] = React.useState("");
 
-  // Re-evaluación del estado de bloqueo anti-DDoS local al abrir la interfaz
+  // Re-evaluacion del estado de bloqueo anti-DDoS local al abrir la interfaz
   React.useEffect(() => {
     if (open) {
       const attempts = getRecentAttempts();
@@ -99,14 +103,14 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
     e.preventDefault();
     if (isSubmitting || cooldown) return;
 
-    // 1. Análisis de Honeypot: Si un bot ha interactuado con el campo oculto, abortamos.
+    // 1. Analisis de Honeypot: Si un bot ha interactuado con el campo oculto, abortamos.
     if (honeypot.trim() !== "") {
       console.warn("Actividad sospechosa de bot interceptada en Honeypot.");
-      onOpenChange(false); // Cierre silencioso del canal de comunicación
+      onOpenChange(false); // Cierre silencioso del canal de comunicacion
       return;
     }
 
-    // 2. Control de Inundación de Peticiones (Rate Limiting)
+    // 2. Control de Inundacion de Peticiones (Rate Limiting)
     const attempts = recordAttempt();
     if (attempts.length > MAX_ATTEMPTS) {
       setCooldown(true);
@@ -114,32 +118,44 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
       return;
     }
 
-    // 3. Sanitización y validación semántica estricta
+    // 3. Sanitizacion y validacion semantica estricta
     const cleanName = sanitizeInput(name);
-    const cleanPhone = sanitizeInput(phone).replace(/\s+/g, ""); // Remueve espacios para la verificación pura
+    const cleanPhone = sanitizeInput(phone).replace(/\s+/g, ""); // Remueve espacios para la verificacion pura
+    const cleanEmail = sanitizeInput(email).trim();
+    const cleanNotes = sanitizeInput(notes);
 
     if (!cleanName || cleanName.length > MAX_NAME_LENGTH) {
-      setError("Introduzca un nombre válido (máximo de 50 caracteres).");
+      setError("Introduzca un nombre valido (maximo de 50 caracteres).");
       return;
     }
 
     if (!PHONE_REGEX.test(cleanPhone)) {
-      setError("Introduzca un número de teléfono válido.");
+      setError("Introduzca un numero de telefono valido.");
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      setError("Introduzca un correo electronico valido.");
       return;
     }
 
     if (!date || !time) {
-      setError("Por favor, seleccione una fecha y hora válidas para su servicio.");
+      setError("Por favor, seleccione una fecha y hora validas para su servicio.");
       return;
     }
 
     const peopleNumber = Number(people);
     if (!peopleNumber || peopleNumber < 1 || peopleNumber > 8) {
-      setError("El número de comensales debe estar entre 1 y 8.");
+      setError("El numero de comensales debe estar entre 1 y 8.");
       return;
     }
 
-    // Limpieza de estados de error ante validación conforme
+    if (cleanNotes.length > MAX_NOTES_LENGTH) {
+      setError(`Las notas no pueden superar los ${MAX_NOTES_LENGTH} caracteres.`);
+      return;
+    }
+
+    // Limpieza de estados de error ante validacion conforme
     setError("");
     setIsSubmitting(true);
 
@@ -148,25 +164,29 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
         data: {
           nombre: cleanName,
           telefono: cleanPhone,
+          email: cleanEmail,
           fecha: date,
           turno: time as "20:30" | "22:30",
           personas: peopleNumber,
+          notas: cleanNotes || undefined,
         },
       });
 
       setIsSubmitting(false);
-      // Reajuste y purga segura de variables sensibles post-transmisión
+      // Reajuste y purga segura de variables sensibles post-transmision
       setName("");
       setPhone("");
+      setEmail("");
       setDate("");
       setTime("");
       setPeople("");
+      setNotes("");
       setHoneypot("");
       onOpenChange(false);
     } catch (err) {
       console.error(err);
       setIsSubmitting(false);
-      setError("No se ha podido completar la reserva. Inténtelo de nuevo.");
+      setError("No se ha podido completar la reserva. Intentelo de nuevo.");
     }
   };
 
@@ -174,16 +194,16 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
-      {/* Contenedor Principal: Estética Zen de Medianoche */}
-      <div className="relative w-full max-w-md border border-border/60 bg-background shadow-2xl transition-all duration-300">
-        
+      {/* Contenedor Principal: Estetica Zen de Medianoche */}
+      <div className="relative w-full max-w-md border border-border/60 bg-background shadow-2xl transition-all duration-300 max-h-[90vh] overflow-y-auto">
+
         {/* Cabecera del Modal */}
         <div className="flex items-center justify-between border-b border-border/40 px-6 py-5">
           <div>
             <h2 className="text-xl font-light uppercase tracking-[0.2em] text-foreground">Reservar Mesa</h2>
-            <p className="text-[10px] uppercase tracking-widest text-gold/80 mt-1">Exclusividad · Barra de 8 Asientos</p>
+            <p className="text-[10px] uppercase tracking-widest text-gold/80 mt-1">Exclusividad - Barra de 8 Asientos</p>
           </div>
-          <button 
+          <button
             type="button"
             onClick={() => onOpenChange(false)}
             className="text-muted-foreground hover:text-gold transition-colors focus:outline-none"
@@ -195,8 +215,8 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
 
         {/* Formulario Controlado */}
         <form onSubmit={handleConfirm} className="space-y-5 px-6 py-6">
-          
-          {/* Trampa Antitráfico Automatizado (Honeypot) */}
+
+          {/* Trampa Antitrafico Automatizado (Honeypot) */}
           <div
             aria-hidden="true"
             className="absolute h-0 w-0 overflow-hidden opacity-0 pointer-events-none"
@@ -220,6 +240,9 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
             </label>
             <input
               type="text"
+              id="nombre_reserva"
+              name="nombre_reserva"
+              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={MAX_NAME_LENGTH}
@@ -230,13 +253,16 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
             />
           </div>
 
-          {/* Input: Contacto Telefónico */}
+          {/* Input: Contacto Telefonico */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground">
-              Teléfono de Contacto
+              Telefono de Contacto
             </label>
             <input
               type="tel"
+              id="telefono_reserva"
+              name="telefono_reserva"
+              autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/[^0-9+\s]/g, ""))}
               inputMode="tel"
@@ -244,6 +270,26 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
               required
               disabled={cooldown || isSubmitting}
               placeholder="+34 600 000 000"
+              className="flex h-11 w-full border border-border bg-secondary/20 px-4 text-sm font-light text-foreground placeholder:text-muted-foreground/30 transition-colors focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 disabled:opacity-40"
+            />
+          </div>
+
+          {/* Input: Email de Contacto */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground">
+              Correo Electronico
+            </label>
+            <input
+              type="email"
+              id="email_reserva"
+              name="email_reserva"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={100}
+              required
+              disabled={cooldown || isSubmitting}
+              placeholder="cliente@email.com"
               className="flex h-11 w-full border border-border bg-secondary/20 px-4 text-sm font-light text-foreground placeholder:text-muted-foreground/30 transition-colors focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 disabled:opacity-40"
             />
           </div>
@@ -287,25 +333,49 @@ export function BookingModal({ open, onOpenChange }: BookingModalProps) {
             </div>
           </div>
 
-          {/* Input: Número de Comensales */}
+          {/* Input: Numero de Comensales */}
           <div className="space-y-1.5">
             <label className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground">
-              Número de Comensales
+              Comensales
             </label>
             <input
-              type="number"
-              min={1}
-              max={8}
+              type="text"
+              inputMode="numeric"
+              pattern="[1-8]"
+              id="pax_total_seats"
+              name="pax_total_seats"
+              autoComplete="new-password"
               value={people}
-              onChange={(e) => setPeople(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^1-8]/g, "");
+                setPeople(val);
+              }}
               required
               disabled={cooldown || isSubmitting}
-              placeholder="Máximo 8"
+              placeholder="Maximo 8"
               className="flex h-11 w-full border border-border bg-secondary/20 px-4 text-sm font-light text-foreground placeholder:text-muted-foreground/30 transition-colors focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 disabled:opacity-40"
             />
           </div>
 
-          {/* Alertas de Validación / Cooldown de Seguridad */}
+          {/* Input: Alergias / Notas */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-light uppercase tracking-[0.2em] text-muted-foreground">
+              Alergias o Comentarios (opcional)
+            </label>
+            <textarea
+              id="notas_reserva"
+              name="notas_reserva"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              maxLength={MAX_NOTES_LENGTH}
+              disabled={cooldown || isSubmitting}
+              placeholder="Ej. Alergia al marisco, celebracion de aniversario..."
+              rows={3}
+              className="flex w-full border border-border bg-secondary/20 px-4 py-2.5 text-sm font-light text-foreground placeholder:text-muted-foreground/30 transition-colors focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/30 disabled:opacity-40 resize-none"
+            />
+          </div>
+
+          {/* Alertas de Validacion / Cooldown de Seguridad */}
           {error && (
             <div className="p-3 bg-crimson/10 border border-crimson/20 rounded-sm">
               <p className="text-xs font-light tracking-wide text-crimson" role="alert">
