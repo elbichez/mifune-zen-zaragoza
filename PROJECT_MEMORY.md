@@ -98,3 +98,4 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 - Conexion Postgres desde Open WebUI usa `host.docker.internal` (no `localhost`, por estar en contenedores distintos)
 - Decision de portfolio: codigo completo de las herramientas NO esta en el repo publico (posible producto comercial). Repo solo incluye README + 1 ejemplo (`consultar_disponibilidad`) en `agente-recepcionista/`
 - Probado end-to-end con casos reales: alta de cliente (Ana García, tel. 600111222), consulta de disponibilidad, creación/consulta/cancelación de reservas — todo verificado directamente en PostgreSQL
+
