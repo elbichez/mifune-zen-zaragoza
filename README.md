@@ -83,7 +83,7 @@ npx wrangler secret put NOTION_DATABASE_ID
 - [x] **Fase 2 - Reservas (Notion)**: formulario de reservas conectado a una base de datos de Notion mediante una funcion de servidor (Cloudflare Worker).
 - [x] **Fase 2.5 - Memoria gastronomica basica**: el formulario captura tambien email y alergias/preferencias del cliente, visibles para el equipo de sala y cocina en Notion.
 - [ ] **Fase 3 - Airtable**: replica de la estructura de reservas (Clientes, Reservas, Turnos) para aprender la herramienta.
-- [ ] **Fase 4 - Agentes IA (Ollama + Open WebUI + PostgreSQL)**: agente recepcionista con herramientas para consultar, crear y cancelar reservas.
+- [x] **Fase 4 - Agentes IA (Ollama + Open WebUI + PostgreSQL)**: agente recepcionista "Agente de Reservas Mifune" (qwen2.5:7b) con 5 herramientas para consultar disponibilidad, gestionar clientes, y crear/consultar/cancelar reservas. Ver [`agente-recepcionista/`](./agente-recepcionista/).
 - [ ] **Fase 5 - Automatizacion (n8n)**: flujos de reserva, lista de espera, notificaciones.
 - [ ] **Fase 6 - CRM con memoria gastronomica avanzada (RAG + Qdrant)**: historico de visitas y preferencias por cliente.
 - [ ] **Fase 7 - Chef IA y Compras IA**: generacion de menus y listas de compra a partir del inventario y las reservas.
