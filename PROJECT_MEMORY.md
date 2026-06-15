@@ -27,6 +27,7 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 - Nivel: principiante en desarrollo/terminal (informática 4/10, código 1/10) — necesita explicaciones paso a paso, sin asumir conocimientos previos. Usa PowerShell en Windows.
 - Tono que le gusta para contenido de LinkedIn: canalla, divertido, estudiante "a tope"
 - Posible objetivo futuro: convertir este proyecto (o parte de él) en un producto vendible a restaurantes reales
+- Trabaja también con Gemini en paralelo para iterar sobre el agente (system prompt + Python)
 
 ## 🛠️ Stack técnico actual (Fase 1 — Web)
 
@@ -43,7 +44,7 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 1. ✅ **Fase 1 — Web institucional**: React + SEO + GEO (datos estructurados Schema.org tipo Restaurant)
 2. ⬜ **Fase 2 — Reservas (Notion)**: formulario → Notion
 3. ⬜ **Fase 3 — Airtable**: tablas Clientes, Reservas, Turnos
-4. ✅ **Fase 4 — Agentes IA**: Ollama (qwen2.5:7b) + Open WebUI + PostgreSQL, agente recepcionista "Agente de Reservas Mifune" con 5 herramientas (consultar disponibilidad, buscar cliente, crear/consultar/cancelar reservas)
+4. 🟡 **Fase 4 — Agentes IA**: Ollama (qwen2.5:7b) + Open WebUI + PostgreSQL, agente recepcionista "Agente de Reservas Mifune" con 5 herramientas — funcional para flujos con datos completos; pendientes 2 validaciones de datos (fecha pasada, turno válido) y rediseño de confirmación para acciones destructivas
 5. ⬜ **Fase 5 — n8n**: flujos de reserva, lista de espera, notificaciones
 6. ⬜ **Fase 6 — CRM con memoria gastronómica (RAG + Qdrant)**: alergias, preferencias, visitas
 7. ⬜ **Fase 7 — Chef IA / Compras IA**: menús y listas de compra automáticas
@@ -66,6 +67,8 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 - Dominio actual: `.workers.dev` (no se ha comprado dominio propio todavía)
 - Modelo del agente recepcionista: `qwen2.5:7b` (no `-coder`) — el modelo "coder" tiene tool calling poco fiable como agente conversacional
 - El código completo de las herramientas del agente recepcionista NO se sube al repo público (posible producto comercial); solo se documenta arquitectura + 1 ejemplo simple
+- NO cambiar de modelo a DeepSeek R1 8B para resolver los hallazgos de las pruebas de estrés: son fallos de validación de datos deterministas (Python), no de razonamiento del LLM
+- Las acciones destructivas (`cancelar_reserva`, futura `modificar_reserva`) requieren rediseño de arquitectura (confirmación fuera del LLM) — el system prompt por sí solo no es suficiente barrera
 
 ## ⚠️ Cosas pendientes / a vigilar
 
@@ -73,6 +76,8 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 - Considerar comprar un dominio propio si el proyecto avanza mucho (mejoraría imagen y permitiría Search Console)
 - El usuario edita archivos con VS Code (recién instalado) — cuando le pases código, dale el archivo completo, no fragmentos, porque copiar/pegar parcial le ha dado errores antes
 - Al unificar en el futuro Notion ↔ PostgreSQL, revisar que coincidan los nombres de campo (ej. "Teléfono" con acento en Notion vs `telefono` sin acento en Postgres)
+- **PENDIENTE Fase 4**: validar en Python que `fecha >= hoy` y que `turno` ∈ {"20:30","22:30"} antes de crear/consultar reservas
+- **PENDIENTE Fase 4 (crítico)**: rediseñar confirmación de acciones destructivas (`cancelar_reserva`) — actualmente el LLM puede ejecutarlas antes de pedir confirmación real, pese a reglas explícitas en el prompt
 
 ## 🐳 Infraestructura local (Fase 4)
 
@@ -84,18 +89,30 @@ Proyecto de portfolio para un curso de Automatización e IA (**Infoser New Techn
 - Tablas creadas: `clientes` (id, nombre, telefono, email, alergias_notas, creado_en) y `reservas` (id, cliente_id FK, fecha, turno, personas, estado, creado_en)
 - Open WebUI corriendo via Docker en `localhost:3000`, conectado a Ollama (host)
 
-## 🤖 Agente Recepcionista (Fase 4 — completada 2026-06-15)
+## 🤖 Agente Recepcionista (Fase 4 — estado a 2026-06-15)
 
-- Modelo: `qwen2.5:7b` (cambiado desde `qwen2.5-coder:7b` por mejor tool calling — el modelo "coder" alucinaba resultados de herramientas sin ejecutarlas, o las ejecutaba pero redactaba mal el resultado final)
-- Interfaz: Open WebUI (localhost:3000), modelo configurado como "Agente de Reservas Mifune"
-- Herramienta: "Mifune_disponibilidad", con 5 funciones Python (psycopg2) conectadas a `mi_postgres_dev`:
-  - `consultar_disponibilidad` (fecha, turno) → plazas libres
+- Modelo: `qwen2.5:7b` (cambiado desde `qwen2.5-coder:7b` por mejor tool calling)
+- Interfaz: Open WebUI (localhost:3000), modelo "Agente de Reservas Mifune"
+- Herramienta: "Mifune_disponibilidad", con 5 funciones Python (psycopg2) + función interna `resolver_fecha()`:
+  - `consultar_disponibilidad` (fecha en lenguaje natural o ISO, turno) → plazas libres
   - `buscar_cliente` (telefono) → datos del cliente si existe
   - `crear_reserva` (nombre, telefono, fecha, turno, personas, email, alergias_notas) → crea cliente si no existe + reserva, comprobando aforo
   - `consultar_reservas_cliente` (telefono) → lista reservas confirmadas
   - `cancelar_reserva` (reserva_id) → marca reserva como cancelada
-- System prompt incluye 2 reglas extra tras pruebas: (1) fidelidad estricta a los datos devueltos por las herramientas, sin mezclar con mensajes anteriores, (2) presentar listas de reservas de forma conversacional, no como volcado de datos
-- Conexion Postgres desde Open WebUI usa `host.docker.internal` (no `localhost`, por estar en contenedores distintos)
-- Decision de portfolio: codigo completo de las herramientas NO esta en el repo publico (posible producto comercial). Repo solo incluye README + 1 ejemplo (`consultar_disponibilidad`) en `agente-recepcionista/`
-- Probado end-to-end con casos reales: alta de cliente (Ana García, tel. 600111222), consulta de disponibilidad, creación/consulta/cancelación de reservas — todo verificado directamente en PostgreSQL
+  - `resolver_fecha` (interna): "hoy"/"mañana"/días de semana/ISO → YYYY-MM-DD; devuelve `ERROR_FECHA_NO_SOPORTADA` si no entiende la expresión
+- System prompt v2 (evolución del v1, trabajado también con Gemini): árbol de decisión de intenciones (A-F), reglas estrictas de ambigüedad (sin fecha+turno no se ejecuta nada; sin turno se consultan ambos), separación estricta de intenciones, fidelidad a resultados de herramientas, presentación natural de listas, cancelación en dos pasos (buscar ID por teléfono antes de cancelar)
+- Conexion Postgres desde Open WebUI usa `host.docker.internal`
+- Decision de portfolio: codigo completo de las herramientas NO esta en el repo publico. Repo solo incluye README + 1 ejemplo (`consultar_disponibilidad` con `resolver_fecha`) en `agente-recepcionista/`
 
+### Resultado de las 10 pruebas de estrés (2026-06-15)
+- Pruebas 1-5 y 8: superadas correctamente (incluye "¿hay sitio para esta noche?" sin turno → consulta ambos turnos con fecha resuelta correctamente; rechazo correcto de grupo de 10 personas con aforo 8)
+- Prueba 6 (modificar reserva, x2): **FALLO CRÍTICO** — el agente ejecutó `cancelar_reserva` real sobre una reserva existente sin confirmación del usuario, en ambos intentos, pese a regla explícita en el prompt prohibiéndolo. Reparado manualmente en BD (`UPDATE reservas SET estado='confirmada' WHERE id=6`) ambas veces
+- Prueba 7 (cancelar sin ID/teléfono): el agente intentó `cancelar_reserva("")`; PostgreSQL lo bloqueó por tipo de dato (protección incidental)
+- Prueba 9 (fecha pasada, 1 enero 2020): se creó una reserva real con fecha pasada (ID 8, borrada tras la prueba) — falta validación "fecha >= hoy"
+- Prueba 10 (turno "21:00", inválido): se creó una reserva real con turno fuera de rango (ID 9, borrada tras la prueba) — falta validación de turno ∈ {"20:30","22:30"}
+
+### Próximos pasos técnicos del agente (siguiente sesión)
+1. Añadir validación "fecha >= hoy" en `resolver_fecha`/`crear_reserva` (rechazo limpio tipo `ERROR_FECHA_NO_SOPORTADA`)
+2. Añadir validación de `turno` ∈ {"20:30","22:30"} en `crear_reserva`/`consultar_disponibilidad`
+3. Rediseñar el flujo de acciones destructivas (`cancelar_reserva`, futura `modificar_reserva`): separar "el LLM propone" de "se ejecuta", con confirmación a nivel de aplicación, no solo de prompt
+4. Recalibrar con el usuario cuánto tiempo dedicar a endurecer Fase 4 vs avanzar a Fase 5 (n8n), según tiempo disponible antes de fin de curso

@@ -45,13 +45,18 @@
 - [ ] Tabla `Turnos`
 - [ ] Replicar lógica de Notion en Airtable (aprendizaje, no sustituye Notion todavía)
 
-## ✅ Fase 4 — Agentes IA locales (COMPLETADA)
+## 🟡 Fase 4 — Agentes IA locales (FUNCIONAL, CON HALLAZGOS DE SEGURIDAD PENDIENTES)
 
 - [x] Instalar/configurar Open WebUI
 - [x] Montar PostgreSQL local
 - [x] Diseñar esquema de BD: `clientes`, `reservas` (turnos, inventario, recetas, ingresos, gastos pendientes para fases posteriores)
 - [x] Crear agente "Recepcionista de Mifune" (prompt + herramientas: consultar/crear/cancelar reservas)
 - [x] Probar el agente con casos reales (reserva completa, turno lleno, cancelación)
+- [x] System prompt v2 + `resolver_fecha()` (lenguaje natural para fechas, con freno de mano `ERROR_FECHA_NO_SOPORTADA`)
+- [x] Batería de 10 pruebas de estrés ejecutada y documentada
+- [ ] **PENDIENTE**: validar en Python que `fecha` no sea anterior a hoy (rechazar fechas pasadas en `resolver_fecha`/`crear_reserva`)
+- [ ] **PENDIENTE**: validar en Python que `turno` sea exactamente "20:30" o "22:30" (en `crear_reserva` y `consultar_disponibilidad`)
+- [ ] **PENDIENTE — CRÍTICO**: rediseñar flujo de "modificar reserva" y cualquier acción destructiva (`cancelar_reserva`) con confirmación a nivel de aplicación (fuera del LLM), ya que el system prompt no es suficiente barrera (ver detalle en `agente-recepcionista/README.md`, sección "Hallazgos de seguridad")
 
 ## ⬜ Fase 5 — Automatización con n8n
 
@@ -87,6 +92,7 @@
 - [x] Post de LinkedIn (ES) — Fase 1
 - [x] Post de LinkedIn (EN) — Fase 1
 - [ ] Post de LinkedIn al cerrar Fase 2
+- [ ] Post de LinkedIn al cerrar Fases 2 + 2.5 + 4 (texto ya redactado, pendiente de publicar)
 - [ ] Vídeo demo corto de cada fase (1-2 min)
 - [ ] Crear releases en GitHub por fase (v1.0, v2.0...)
 
@@ -128,7 +134,7 @@
 
 ## ACTUALIZACION 2026-06-15
 
-## Fase 4 - Agente Recepcionista de Mifune (COMPLETADA)
+## Fase 4 - Agente Recepcionista de Mifune v1 (COMPLETADA)
 
 - [x] Disenar prompt de sistema del agente "Recepcionista de Mifune"
 - [x] Definir herramientas (function calling): consultar_disponibilidad, buscar_cliente, crear_reserva, consultar_reservas_cliente, cancelar_reserva
@@ -143,6 +149,20 @@ Nombres oficiales:
 - Herramienta: "Mifune_disponibilidad" (contiene las 5 funciones)
 
 Decision: codigo completo de las 5 herramientas NO se sube al repo publico (posible producto vendible a restaurantes). Solo se documenta arquitectura + 1 ejemplo (consultar_disponibilidad).
+
+## Fase 4 - Agente v2 + Pruebas de estres (REALIZADO, con hallazgos pendientes)
+
+- [x] Anadida funcion `resolver_fecha()`: lenguaje natural -> ISO YYYY-MM-DD, con freno de mano ERROR_FECHA_NO_SOPORTADA
+- [x] System prompt v2: arbol de decision de intenciones, reglas de ambiguedad fecha/turno, separacion estricta de intenciones, cancelacion en dos pasos
+- [x] Bateria de 10 pruebas de estres disenada y ejecutada
+- [x] Pruebas 1-5 (incluyendo fechas en lenguaje natural sin turno): superadas correctamente
+- [ ] **HALLAZGO CRITICO** (Prueba 6 - modificar reserva): el agente ejecuto `cancelar_reserva` real sobre una reserva (ID 6) sin confirmacion, en 2 intentos, pese a regla explicita en el prompt. Reparado manualmente en BD ambas veces (UPDATE estado='confirmada'). Requiere rediseno: confirmacion de acciones destructivas fuera del LLM
+- [ ] **HALLAZGO** (Prueba 7 - cancelar sin ID/telefono): el agente intento cancelar_reserva("") con ID vacio; Postgres lo bloqueo por tipo de dato (proteccion incidental, no por diseno del agente)
+- [x] Prueba 8 (10 personas, aforo 8): rechazado correctamente
+- [ ] **HALLAZGO** (Prueba 9 - fecha pasada 1 enero 2020): se creo reserva real con fecha pasada (ID 8, borrada tras la prueba). Falta validacion de "fecha >= hoy" en Python
+- [ ] **HALLAZGO** (Prueba 10 - turno "21:00"): se creo reserva real con turno invalido (ID 9, borrada tras la prueba). Falta validacion de turno en {"20:30","22:30"} en Python
+
+Decision: NO cambiar de modelo (se descarta DeepSeek R1 8B) - los hallazgos 9 y 10 son validaciones deterministas de datos, independientes del modelo. El hallazgo 6 requiere cambio de arquitectura (confirmacion fuera del LLM), no de modelo ni de prompt.
 
 ## Pendiente unificacion Notion <-> PostgreSQL
 

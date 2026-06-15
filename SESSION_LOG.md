@@ -29,37 +29,39 @@
 ## 2026-06-15
 
 **Hecho:**
-- Diseñado el system prompt del agente "Recepcionista de Mifune" (datos del restaurante, rol, límites)
-- Implementadas y probadas las 5 herramientas (function calling) en Open WebUI, dentro de la tool "Mifune_disponibilidad":
-  - `consultar_disponibilidad` (consulta plazas libres por fecha/turno)
-  - `buscar_cliente` (busca cliente existente por teléfono)
-  - `crear_reserva` (crea cliente si no existe + crea reserva, comprobando aforo)
-  - `consultar_reservas_cliente` (lista reservas confirmadas de un cliente)
-  - `cancelar_reserva` (cambia estado de una reserva a "cancelada")
-- Conectadas las 5 herramientas a PostgreSQL (`mi_postgres_dev`) vía `psycopg2`, usando `host.docker.internal` para conectar desde el contenedor de Open WebUI al contenedor de Postgres
-- Modelo del agente configurado en Open WebUI: "Agente de Reservas Mifune"
-- Probado el agente con casos reales de extremo a extremo: consulta de disponibilidad, alta de cliente nuevo (Ana García, tel. 600111222), creación de reserva, consulta de reservas del cliente, cancelación de reserva
-- Documentado el agente en el repo: carpeta `agente-recepcionista/` con `README.md` (arquitectura, herramientas, decisiones), `ejemplo_herramienta.py` (ejemplo completo de `consultar_disponibilidad` con manejo de secretos vía variable de entorno) y `.env.example`
-- Redactado post de LinkedIn de cierre de Fases 2, 2.5 y 4 (pendiente de publicar)
+- Diseñado el system prompt v1 del agente "Recepcionista de Mifune" y las 5 herramientas (function calling) en Open WebUI: `consultar_disponibilidad`, `buscar_cliente`, `crear_reserva`, `consultar_reservas_cliente`, `cancelar_reserva`
+- Conectadas las 5 herramientas a PostgreSQL (`mi_postgres_dev`) vía `psycopg2`, usando `host.docker.internal`
+- Modelo del agente: "Agente de Reservas Mifune" sobre `qwen2.5:7b`
+- Probado el agente con casos reales end-to-end: disponibilidad, alta de cliente, crear/consultar/cancelar reserva
+- Documentado el agente en el repo: carpeta `agente-recepcionista/` con README, ejemplo de herramienta y `.env.example`
+- Redactado post de LinkedIn de cierre de Fases 2, 2.5 y 4
+- Trabajo adicional (con Gemini) sobre `herramientas.py` y system prompt v2:
+  - Añadida función `resolver_fecha()`: convierte expresiones temporales en lenguaje natural ("hoy", "mañana", días de la semana) a ISO YYYY-MM-DD usando el reloj del sistema; el LLM ya no calcula fechas
+  - Añadido "freno de mano" `ERROR_FECHA_NO_SOPORTADA` si la expresión temporal no se entiende, evitando enviar texto inválido a una columna DATE de Postgres
+  - System prompt v2: árbol de decisión de intenciones, reglas de ambigüedad (pedir fecha+turno si faltan, consultar ambos turnos si falta solo el turno), separación estricta de intenciones, regla de cancelación en dos pasos (buscar ID por teléfono antes de cancelar)
+- Diseñada y ejecutada una batería de 10 pruebas de estrés sobre el agente v2
 
 **Problemas encontrados:**
-- `qwen2.5-coder:7b` (modelo "coder") tenía tool calling poco fiable como agente: en una prueba escribió el código de la llamada como texto sin ejecutarla, en otra ejecutó la herramienta pero "alucinó" los datos de la respuesta final (decía "Ya existe un cliente" cuando en realidad se había creado la reserva correctamente)
-- Verificado en base de datos (vía `docker exec -it mi_postgres_dev psql`) que el backend funcionaba perfectamente en ambos casos — el problema era solo de redacción del modelo, no del código
-- Tras cambiar a `qwen2.5:7b`, persistían dos fallos menores de redacción: (1) mezclaba la fecha de una reserva anterior con la nueva al confirmar, (2) al listar reservas de un cliente, describía el resultado como si no tuviera información del cliente aunque los datos eran correctos
-- Ambos resueltos añadiendo 2 reglas al system prompt (ver Decisiones)
+- Pruebas 1-5 (consultas básicas, "¿hay sitio para esta noche?" sin turno, etc.): funcionan correctamente con el system prompt v2
+- Prueba 6 (modificar reserva sin herramienta dedicada, 2 intentos): el agente interpretó "modificar" como "cancelar + crear nueva" y **ejecutó `cancelar_reserva` de forma real sobre la reserva ID 6** antes de pedir confirmación, en ambos intentos — pese a una regla explícita añadida al system prompt prohibiéndolo. Verificado en BD con `psql` y reparado manualmente con `UPDATE reservas SET estado='confirmada' WHERE id=6` en ambas ocasiones
+- Prueba 7 (cancelar sin ID ni teléfono): el agente intentó `cancelar_reserva("")` con ID vacío, violando la regla de cancelación en dos pasos; PostgreSQL rechazó la query por tipo de dato (`invalid input syntax for type integer`), evitando daño real por una protección incidental de la BD, no por diseño del agente. Salida con texto en chino mezclado en un punto (síntoma de inestabilidad del modelo)
+- Prueba 8 (10 personas, aforo 8): ✅ rechazado correctamente, redacción algo confusa pero sin consecuencias
+- Prueba 9 (fecha pasada, 1 enero 2020): **se creó una reserva real con fecha pasada** (ID 8) — ni el system prompt ni `resolver_fecha` validan que la fecha sea futura. Texto de respuesta contradictorio (decía "ya existe" una reserva que él mismo creó)
+- Prueba 10 (turno "21:00", fuera de los 2 turnos válidos): **se creó una reserva real con turno="21:00"** (ID 9), corrompiendo integridad de datos; el agente consultó disponibilidad de 20:30 pero confirmó con 21:00
+- IDs 8 y 9 borradas de la BD tras la prueba (`DELETE FROM reservas WHERE id IN (8,9)`)
 
 **Decisiones tomadas:**
-- Cambio de modelo del agente: `qwen2.5-coder:7b` → `qwen2.5:7b` (modelo general, mismo tamaño/VRAM, entrenado para seguir instrucciones y tool calling; el "coder" está optimizado para generar código, no para actuar como agente conversacional)
-- Se evita DeepSeek R1 (modelos de razonamiento) para este agente: mezclan razonamiento interno con la respuesta final, complicando el tool calling
-- Añadidas 2 reglas al system prompt: (1) fidelidad estricta a los datos exactos devueltos por las herramientas, sin mezclar con mensajes anteriores, (2) presentar listas de reservas de forma natural y conversacional
-- Decisión de portfolio/negocio: NO subir al repo público el código completo de las 5 herramientas (posible producto comercial a futuro, venta a restaurantes). El repo solo incluye documentación de la arquitectura + 1 ejemplo de herramienta simple (`consultar_disponibilidad`)
-- Pendiente anotado: al unificar en el futuro Notion ↔ PostgreSQL, revisar que coincidan los nombres de campo (ej. "Teléfono" con acento en Notion vs `telefono` sin acento en Postgres)
+- Se confirma "lunes dicho un lunes = hoy" en `resolver_fecha` como decisión de diseño correcta (coherente con el uso natural del español: "el lunes que viene" se dice explícitamente así)
+- Se descarta cambiar de modelo a DeepSeek R1 8B: los fallos de las pruebas 9 y 10 son de validación de datos determinista (fecha pasada, turno inválido), no de "razonamiento" — se resuelven en Python independientemente del modelo
+- Hallazgo de seguridad documentado como prioritario: las reglas de confirmación en el system prompt NO son suficientes como única barrera para acciones irreversibles (`cancelar_reserva`) en modelos locales ~7B; requiere rediseño arquitectónico (separar "proponer" de "ejecutar", con confirmación a nivel de aplicación)
+- Decisión de portfolio mantenida: código completo de las herramientas NO se sube al repo público (posible producto comercial)
 
 **Siguiente paso:**
-- Subir carpeta `agente-recepcionista/` y actualizaciones de `BACKLOG_MASTER.md` / `PROJECT_MEMORY.md` / `SESSION_LOG.md` a GitHub
-- Actualizar el README principal del repo con la Fase 4 completada
-- Publicar el post de LinkedIn de cierre de Fases 2, 2.5 y 4
-- Empezar Fase 5 (n8n) o continuar refinando el agente recepcionista
+- Implementar en Python (independiente del modelo): (1) rechazar fechas pasadas en `resolver_fecha`/`crear_reserva`, (2) validar que `turno` sea exactamente "20:30" o "22:30" en `crear_reserva`/`consultar_disponibilidad`
+- Diseñar mecanismo de confirmación para acciones destructivas (`cancelar_reserva`, futura `modificar_reserva`) fuera del LLM
+- Subir a GitHub: carpeta `agente-recepcionista/` actualizada (README v2, ejemplo con `resolver_fecha`), `BACKLOG_MASTER.md`, `PROJECT_MEMORY.md`, `SESSION_LOG.md`, README principal
+- Recalibrar cuánto tiempo dedicar a endurecer el agente vs. avanzar a Fase 5 (n8n), según tiempo disponible antes de fin de curso
+- Publicar post de LinkedIn de cierre de Fases 2, 2.5 y 4
 
 ## 2026-06-14
 
